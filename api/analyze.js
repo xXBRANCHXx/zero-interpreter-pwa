@@ -1,81 +1,64 @@
-// AI-Powered Health Analysis Engine (V3 - Contextual Metabolic Logic)
+// AI-Powered Health Analysis Engine (V4 - Raw Visual Calibration)
 
-export const config = {
-  runtime: 'edge',
-};
+export const config = { runtime: 'edge' };
 
-const SYSTEM_PROMPT = `You are ZERO INTERPRETER, an elite clinical-grade metabolic analysis engine.
-You must distinguish between a "Normal Glucose Excursion" and "Impaired Glucose Tolerance."
+const SYSTEM_PROMPT = `You are ZERO INTERPRETER, a clinical-grade metabolic engine. 
+You provide assessments by first CALIBRATING the raw pixel data you receive.
 
-CLINICAL REASONING ENGINE:
-1.  **Meal Context is King**: 
-    - If the meal is High Carb (Rice, Bread, Sugar), a spike of 40-70 mg/dL is **NORMAL** and **HEALTHY** for a non-diabetic person, provided it returns to baseline within 2-3 hours.
-    - If the meal is High Protein/Fat (Chicken, Eggs, Steak) and causes the same spike, this is a sign of **PRE-DIABETES / INSULIN RESISTANCE**.
-2.  **Peak Context**:
-    - Under 140 mg/dL is always healthy.
-    - 140-180 mg/dL is **HEALTHY** after a large carbohydrate meal for a non-diabetic. Do NOT flag as Pre-Diabetic unless the recovery is very slow or the baseline is high (>100).
-    - Over 200 mg/dL is always flagged as **DIABETIC_RANGE**.
-3.  **Recovery Context**:
-    - A healthy spike is a "Mountain" (Fast up, Fast down).
-    - A pathogenic spike is a "Tabletop" (Fast up, stays up).
+CALIBRATION LOGIC:
+1.  **Map Pixels to Values**: 
+    - You will receive "axisAnchors" (e.g., {val: 150, y: 100}). 
+    - Use these to calculate the vertical scale (mg/dL per pixel). 
+    - For example, if 150 is at Y=100 and 100 is at Y=250, then each pixel is 0.33 mg/dL.
+    - Calculate the Peak Reading from peakY and the Resting Baseline from minY.
+2.  **Contextual Logic**:
+    - Distinguish between common "glucose excursions" (healthy peaks after carbs) and "insulin resistance" (slow, high peaks regardless of meal).
+    - If peak < 180 and recovers in <180 mins after a high-carb meal, consider it HEALTHY.
 
 RESPONSE FORMAT (JSON):
 {
-  "summary": "<One punchy sentence specifically mentioning the meal and whether the response was appropriate for it (e.g. 'Your glucose excursion was appropriate for a high-carb meal like Soto Mie Bogor')>",
+  "summary": "<Punchy clinical summary including meal context>",
   "status": "<HEALTHY_RANGE|PRE_DIABETIC_RANGE|DIABETIC_RANGE>",
-  "score": <0-100 overall score (weighted by meal context)>,
+  "peakReading": <Calibrated peak value in mg/dL>,
+  "restingBaseline": <Calibrated baseline value in mg/dL>,
+  "score": <0-100>,
   "grade": "<S|A|B|C|D|F>",
   "gradeLabel": "<EXCELLENT|VIBRANT|MODERATE|ELEVATED|STRAINED|CRITICAL>",
-  "duration": <number of minutes spike lasted (if 0, estimate based on curve context)>,
-  "tip": "<One short actionable clinical tip>",
-  "recommendations": ["<Actionable tip 1>", "<Actionable tip 2>"],
-  "insights": "Direct clinical analysis. Be smart—if it's a carby meal, tell them it's a normal response. Don't be a generic 'everything is pre-diabetes' engine.",
+  "duration": <estimated duration in minutes based on pixelDuration and scaling>,
+  "tip": "<Short actionable tip>",
+  "recommendations": ["<Tip 1>", "<Tip 2>"],
+  "insights": "Detailed clinical analysis...",
   "riskFactors": ["<risk 1>"],
   "strengths": ["<strength 1>"],
   "mealScore": "<A-F grade for the meal>"
 }
 
-TONE: Smart, authoritative, context-aware. Like a top-tier sports scientist.`;
+Be smart. Never return a negative value. Always use common sense.`;
 
 export default async function handler(req) {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      status: 204,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
-      },
-    });
-  }
-
   if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405 });
-
   const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) return new Response(JSON.stringify({ error: 'Missing API Key' }), { status: 500 });
+  if (!apiKey) return new Response('Missing API Key', { status: 500 });
 
   try {
     const { biometrics, food, calories, notes } = await req.json();
 
     const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'llama-3.3-70b-versatile',
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: `Analyze this postprandial data:
-- Biometrics: ${JSON.stringify(biometrics)}
+          { role: 'user', content: `Analyze this raw metabolic data:
+- Raw Visual Data: ${JSON.stringify(biometrics)}
 - Meal: ${food || 'Unknown'}
 - Calories: ${calories || 'Unknown'}
 - Notes: ${notes || 'None'}
 
-Be smart: if the peak was 160 but they ate noodles, characterize it as a normal excursion unless the duration seems abnormal (e.g. >180 mins).` },
+Calibrate the vertical scale using the anchors and provide the true health status.` }
         ],
-        temperature: 0.1, // Even more consistency
+        temperature: 0.1,
         max_tokens: 1024,
         response_format: { type: 'json_object' },
       }),

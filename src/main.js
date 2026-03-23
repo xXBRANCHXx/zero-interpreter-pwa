@@ -1,6 +1,5 @@
 import './style.css';
 import { processImage } from './engine/ocr.js';
-import { parseHealthData } from './engine/parser.js';
 import { analyzeWithAI } from './engine/ai-analyzer.js';
 
 // DOM Elements
@@ -35,7 +34,7 @@ const elements = {
   results: document.getElementById('results'),
 };
 
-let currentBiometrics = [];
+let rawVisualData = {};
 
 // Event Handlers
 elements.chartInput.onchange = (e) => handleFileUpload(e.target.files[0]);
@@ -74,15 +73,12 @@ async function handleFileUpload(file) {
     elements.statusOutput.textContent = 'EXTRACTING_AXIS_ANCHORS...';
     await new Promise(r => setTimeout(r, 600));
 
-    currentBiometrics = parseHealthData(rawData.text, rawData.visualData);
+    rawVisualData = rawData.visualData;
     
-    // UI Update: Biometrics list
-    elements.biometricsList.innerHTML = currentBiometrics.map(b => `
-      <div class="data-row">
-        <span class="data-key">${b.label}</span>
-        <span class="data-value">${b.value}</span>
-      </div>
-    `).join('') || '<div class="data-item">No biometric paths found.</div>';
+    // UI Update: Show "AWAITING ANALYSIS"
+    elements.biometricsList.innerHTML = `
+      <div class="data-item">Raw pixels captured. Awaiting AI calibration...</div>
+    `;
 
     showSection('questions');
   } catch (err) {
@@ -97,15 +93,15 @@ async function renderResults() {
   const notes = elements.notesInput.value;
 
   showSection('processing');
-  elements.statusOutput.textContent = 'CONNECTING_TO_AI_ENGINE...';
+  elements.statusOutput.textContent = 'CALIBRATING_VISUAL_DATA_WITH_AI...';
   elements.progressBar.style.width = '30%';
   await new Promise(r => setTimeout(r, 400));
 
-  elements.statusOutput.textContent = 'AI_ANALYZING_METABOLIC_RESPONSE...';
+  elements.statusOutput.textContent = 'ANALYZING_METABOLIC_RESPONSE...';
   elements.progressBar.style.width = '60%';
 
   try {
-    const analysis = await analyzeWithAI(food, calories, currentBiometrics, notes);
+    const analysis = await analyzeWithAI(food, calories, rawVisualData, notes);
 
     elements.progressBar.style.width = '100%';
     elements.statusOutput.textContent = 'RENDERING_REPORT...';
@@ -123,9 +119,16 @@ async function renderResults() {
     const gradeLabelElement = document.getElementById('gradeLabel');
     const durationElement = document.getElementById('spikeDuration');
     
-    statusElement.textContent = analysis.status.replace(/_/g, ' ');
+    statusElement.textContent = (analysis.status || 'UNKNOWN').replace(/_/g, ' ');
     gradeLabelElement.textContent = analysis.gradeLabel;
     durationElement.textContent = analysis.duration;
+
+    // Biometrics Update (using AI-driven values)
+    elements.biometricsList.innerHTML = `
+      <div class="data-row"><span class="data-key">Peak Reading</span><span class="data-value">${analysis.peakReading} mg/dL</span></div>
+      <div class="data-row"><span class="data-key">Resting Baseline</span><span class="data-value">${analysis.restingBaseline} mg/dL</span></div>
+      <div class="data-row"><span class="data-key">Elevation Time</span><span class="data-value">${analysis.duration} min</span></div>
+    `;
 
     // Dynamic Coloring
     const scoreColor = analysis.score > 80 ? '#4ecca3' : analysis.score > 50 ? '#ffcc00' : '#ff5e62';
@@ -202,7 +205,7 @@ function resetApp() {
   elements.foodInput.value = '';
   elements.caloriesInput.value = '';
   elements.notesInput.value = '';
-  currentBiometrics = [];
+  rawVisualData = {};
   elements.healthScore.textContent = '--';
   elements.foodGrade.textContent = '--';
   elements.healthTip.textContent = 'Scanning for insights...';
