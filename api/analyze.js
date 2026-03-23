@@ -1,44 +1,34 @@
-// Vercel Serverless Function — AI-Powered Health Analysis via Groq (Free Tier)
+// AI-Powered Health Analysis Engine (V2 - Strict Clinical Logic)
 
 export const config = {
   runtime: 'edge',
 };
 
-const SYSTEM_PROMPT = `You are ZERO INTERPRETER, an elite clinical-grade metabolic analysis engine.
-You receive extracted biometric data from a glucose chart along with the patient's dietary context.
-Your job is to produce a structured, medically-informed analysis.
+const SYSTEM_PROMPT = `You are ZERO INTERPRETER, a clinical-grade metabolic analysis engine. 
+You provide assessments based on standard endocrinology (ADA guidelines).
 
-RESPONSE FORMAT (strict JSON only, no markdown, no code fences):
+CLINICAL CLASSIFICATION LOGIC:
+- DIABETIC_RANGE: Peak glucose is consistently >= 200 mg/dL.
+- PRE_DIABETIC_RANGE: Peak glucose is >= 140 mg/dL but < 200 mg/dL.
+- HEALTHY_RANGE: Peak glucose is < 140 mg/dL and returns to baseline within 120-180 minutes.
+
+RESPONSE FORMAT (strict JSON only):
 {
-  "score": <number 0-100, overall metabolic health score>,
+  "summary": "<One punchy, authoritative sentence summarizing the metabolic state>",
+  "status": "<DIABETIC_RANGE|PRE_DIABETIC_RANGE|HEALTHY_RANGE>",
+  "score": <0-100 overall score>,
   "grade": "<S|A|B|C|D|F>",
-  "gradeLabel": "<one-word label like EXCELLENT, VIBRANT, MODERATE, ELEVATED, STRAINED, CRITICAL>",
-  "status": "<HEALTHY_RANGE|PRE_DIABETIC_RANGE|DIABETIC_RANGE>",
-  "duration": "<spike duration in minutes as a number, or 0 if unknown>",
-  "tip": "<one sentence personalized tip>",
-  "insights": "<2-4 paragraphs of detailed clinical-style analysis, separated by newlines. Cover: (1) glucose response pattern, (2) dietary impact assessment, (3) recovery analysis, (4) actionable recommendations. Use a warm, professional tone — like a caring endocrinologist.>",
-  "riskFactors": ["<risk factor 1>", "<risk factor 2>"],
-  "strengths": ["<metabolic strength 1>", "<metabolic strength 2>"],
-  "mealScore": "<A-F grade specifically for the meal's metabolic impact>",
-  "mealVerdict": "<one sentence verdict on the meal>"
+  "gradeLabel": "<EXCELLENT|VIBRANT|MODERATE|ELEVATED|STRAINED|CRITICAL>",
+  "duration": <number of minutes spike lasted>,
+  "tip": "<One short actionable clinical tip>",
+  "recommendations": ["<Actionable tip 1>", "<Actionable tip 2>", "<Actionable tip 3>"],
+  "insights": "<2-3 structured paragraphs explaining: (1) why they were classified this way, (2) the impact of the specific meal (e.g. Soto Mie Bogor), and (3) clinical context on their recovery curve.>",
+  "riskFactors": ["<risk 1>", "<risk 2>"],
+  "strengths": ["<strength 1>", "<strength 2>"],
+  "mealScore": "<A-F grade for the meal>"
 }
 
-SCORING GUIDELINES:
-- Score 90-100: Minimal spike (<20mg/dL delta), fast recovery (<60min), healthy meal
-- Score 70-89: Moderate spike (20-40mg/dL delta), reasonable recovery
-- Score 50-69: Significant spike (40-60mg/dL delta), slow recovery, poor meal quality
-- Score 30-49: High spike (60-80mg/dL delta), very slow recovery
-- Score 0-29: Dangerous spike (>80mg/dL delta), extended elevation
-
-GRADE MAPPING:
-- S: Exceptional metabolic control
-- A: Strong metabolic response
-- B: Average, some room for improvement
-- C: Below average, needs attention
-- D: Poor metabolic control
-- F: Critical, seek medical advice
-
-Always respond with ONLY the JSON object. No other text.`;
+TONE: Professional, clinicial, yet empathetic. No fluff. Use medical terminology correctly (e.g., "glucose excursions", "metabolic flexibility", "postprandial response").`;
 
 export default async function handler(req) {
   if (req.method === 'OPTIONS') {
@@ -52,26 +42,13 @@ export default async function handler(req) {
     });
   }
 
-  if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-      status: 405,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
+  if (req.method !== 'POST') return new Response('Method Not Allowed', { status: 405 });
 
   const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) {
-    return new Response(
-      JSON.stringify({ error: 'GROQ_API_KEY not configured. Add it to Vercel environment variables.' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    );
-  }
+  if (!apiKey) return new Response(JSON.stringify({ error: 'Missing API Key' }), { status: 500 });
 
   try {
-    const body = await req.json();
-    const { biometrics, food, calories, notes } = body;
-
-    const userMessage = buildUserMessage(biometrics, food, calories, notes);
+    const { biometrics, food, calories, notes } = await req.json();
 
     const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
@@ -83,65 +60,26 @@ export default async function handler(req) {
         model: 'llama-3.3-70b-versatile',
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: userMessage },
+          { role: 'user', content: `Analyze this postprandial data:
+- Biometrics: ${JSON.stringify(biometrics)}
+- Meal: ${food || 'Unknown'}
+- Calories: ${calories || 'Unknown'}
+- Notes: ${notes || 'None'}
+
+Provide strict classification based on peak readings provided.` },
         ],
-        temperature: 0.3,
+        temperature: 0.2, // Lower temperature for consistency
         max_tokens: 1024,
         response_format: { type: 'json_object' },
       }),
     });
 
-    if (!groqResponse.ok) {
-      const errText = await groqResponse.text();
-      console.error('Groq API error:', errText);
-      return new Response(
-        JSON.stringify({ error: 'AI engine unavailable', detail: errText }),
-        { status: 502, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-
     const data = await groqResponse.json();
-    const content = data.choices?.[0]?.message?.content;
-
-    let analysis;
-    try {
-      analysis = JSON.parse(content);
-    } catch {
-      console.error('Failed to parse AI response:', content);
-      return new Response(
-        JSON.stringify({ error: 'AI returned invalid format', raw: content }),
-        { status: 502, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-
-    return new Response(JSON.stringify(analysis), {
+    return new Response(data.choices[0].message.content, {
       status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      },
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     });
   } catch (err) {
-    console.error('Handler error:', err);
-    return new Response(
-      JSON.stringify({ error: 'Internal server error', message: err.message }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({ error: err.message }), { status: 500 });
   }
-}
-
-function buildUserMessage(biometrics, food, calories, notes) {
-  const bioText = biometrics
-    .map((b) => `${b.label}: ${b.value}`)
-    .join('\n');
-
-  return `BIOMETRIC DATA EXTRACTED FROM CHART:
-${bioText || 'No biometric data extracted'}
-
-PATIENT CONTEXT:
-- Recent Meal: ${food || 'Not provided'}
-- Caloric Intake: ${calories ? calories + ' kcal' : 'Not provided'}
-- Additional Notes: ${notes || 'None'}
-
-Analyze this metabolic data and provide your structured assessment.`;
 }

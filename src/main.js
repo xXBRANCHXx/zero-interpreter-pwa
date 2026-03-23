@@ -25,6 +25,9 @@ const elements = {
   riskList: document.getElementById('riskList'),
   strengthList: document.getElementById('strengthList'),
   aiIndicator: document.getElementById('aiIndicator'),
+  // Summary & Recs
+  analysisSummary: document.getElementById('analysisSummary'),
+  recommendationsList: document.getElementById('recommendationsList'),
   // Sections
   hero: document.getElementById('hero'),
   processing: document.getElementById('processing'),
@@ -108,6 +111,9 @@ async function renderResults() {
     elements.statusOutput.textContent = 'RENDERING_REPORT...';
     await new Promise(r => setTimeout(r, 300));
 
+    // Summary Title Update
+    if (elements.analysisSummary) elements.analysisSummary.textContent = analysis.summary || '--';
+
     // Core Result Update
     elements.healthScore.textContent = analysis.score;
     elements.foodGrade.textContent = analysis.grade;
@@ -117,7 +123,7 @@ async function renderResults() {
     const gradeLabelElement = document.getElementById('gradeLabel');
     const durationElement = document.getElementById('spikeDuration');
     
-    statusElement.textContent = analysis.status;
+    statusElement.textContent = analysis.status.replace(/_/g, ' ');
     gradeLabelElement.textContent = analysis.gradeLabel;
     durationElement.textContent = analysis.duration;
 
@@ -130,6 +136,15 @@ async function renderResults() {
     statusElement.style.background = gradeColor;
 
     elements.insightContent.innerText = analysis.insights;
+
+    // Recommendations List
+    if (elements.recommendationsList && analysis.recommendations?.length > 0) {
+      elements.recommendationsList.innerHTML = analysis.recommendations
+        .map(r => `<div class="recommendation-item">${r}</div>`)
+        .join('');
+    } else {
+      elements.recommendationsList.innerHTML = '';
+    }
 
     // New AI fields
     if (elements.mealScore) {
@@ -192,14 +207,13 @@ function resetApp() {
   elements.foodGrade.textContent = '--';
   elements.healthTip.textContent = 'Scanning for insights...';
   if (elements.mealScore) elements.mealScore.textContent = '--';
-  if (elements.mealVerdict) elements.mealVerdict.textContent = '';
   if (elements.riskList) elements.riskList.innerHTML = '<span class="tag tag-neutral">AWAITING_ANALYSIS</span>';
-  if (elements.strengthList) elements.strengthList.innerHTML = '<span class="tag tag-neutral">AWAITING_ANALYSIS</span>';
   if (elements.aiIndicator) elements.aiIndicator.classList.add('hidden');
+  if (elements.recommendationsList) elements.recommendationsList.innerHTML = '';
+  if (elements.analysisSummary) elements.analysisSummary.textContent = 'Scanning for insights...';
   showSection('hero');
 }
 
-// Section-only logic for Dev HMR support
 if (import.meta.hot) {
   import.meta.hot.accept();
 }

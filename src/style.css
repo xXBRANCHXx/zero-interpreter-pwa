@@ -369,6 +369,37 @@ textarea {
   color: var(--main-text);
   white-space: pre-wrap;
   line-height: 1.8;
+  margin-bottom: 2rem;
+}
+
+.summary-text {
+  font-family: var(--font-main);
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--main-text);
+  margin-top: 0.5rem;
+  margin-bottom: 0;
+  max-width: 650px;
+}
+
+.recommendation-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.recommendation-item {
+  color: var(--dim-text);
+  font-size: 0.75rem;
+  padding-left: 1rem;
+  border-left: 1px solid var(--accent-color);
+  line-height: 1.4;
+}
+
+.result-header {
+  display: flex !important;
+  justify-content: space-between;
+  align-items: flex-start;
 }
 
 /* AI Tags & Badges */
