@@ -18,7 +18,6 @@ export async function processImage(file, onProgress) {
   // -- ADVANCED PRE-PROCESSING FOR OCR --
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const data = imageData.data;
-  const pixels = [];
   
   for (let i = 0; i < data.length; i += 4) {
     const r = data[i], g = data[i + 1], b = data[i + 2];
@@ -40,29 +39,38 @@ export async function processImage(file, onProgress) {
     logger: m => m.status === 'recognizing text' && onProgress(Math.floor(m.progress * 100))
   });
 
-  // Recognize with hOCR to get spatial positions of text
-  const { data: { text, blocks } } = await worker.recognize(canvas.toDataURL('image/png'));
-  
-  // -- DYNAMIC CALIBRATION ENGINE (Uses OCR to Map Pixels to Values) --
-  const axisLabels = [];
-  blocks.forEach(block => {
-    block.paragraphs.forEach(p => {
-      p.lines.forEach(l => {
-        const lineText = l.text.trim();
-        const match = lineText.match(/^\b(\d{2,3})\b$/);
-        if (match) {
-          axisLabels.push({ val: parseInt(match[1]), y: l.bbox.y0 + (l.bbox.y1 - l.bbox.y0)/2 });
-        }
-      });
+  try {
+    const result = await worker.recognize(canvas.toDataURL('image/png'));
+    const text = result.data.text || '';
+    const blocks = result.data.blocks || [];
+    
+    // -- DYNAMIC CALIBRATION ENGINE --
+    const axisLabels = [];
+    blocks.forEach(block => {
+      if (block.paragraphs) {
+        block.paragraphs.forEach(p => {
+          p.lines.forEach(l => {
+            const lineText = l.text.trim();
+            const match = lineText.match(/^\b(\d{2,3})\b$/);
+            if (match) {
+              axisLabels.push({ val: parseInt(match[1]), y: l.bbox.y0 + (l.bbox.y1 - l.bbox.y0)/2 });
+            }
+          });
+        });
+      }
     });
-  });
 
-  const visualData = analyzeChartPixels(ctx, canvas.width, canvas.height, axisLabels);
-  
-  await worker.terminate();
-  URL.revokeObjectURL(imageUrl);
-  
-  return { text, visualData };
+    const visualData = analyzeChartPixels(ctx, canvas.width, canvas.height, axisLabels);
+    
+    await worker.terminate();
+    URL.revokeObjectURL(imageUrl);
+    return { text, visualData };
+  } catch (err) {
+    console.error('OCR Error:', err);
+    await worker.terminate();
+    URL.revokeObjectURL(imageUrl);
+    throw err;
+  }
 }
 
 function analyzeChartPixels(ctx, width, height, axisLabels = []) {
@@ -89,30 +97,24 @@ function analyzeChartPixels(ctx, width, height, axisLabels = []) {
   // 2. DYNAMIC MAPPING Logic
   const yMap = new Array(height).fill(0);
   
-  // If we found axis labels via OCR, use them to anchor the math
   if (axisLabels.length >= 2) {
-    const sorted = axisLabels.sort((a,b) => a.y - b.y); // Top to bottom (Low val is high Y)
-    // Find pixels per unit
+    const sorted = axisLabels.sort((a,b) => a.y - b.y);
     const p1 = sorted[0];
     const p2 = sorted[sorted.length - 1];
-    const unitPerPixel = Math.abs(p1.val - p2.val) / Math.abs(p1.y - p2.y);
+    const unitPerPixel = Math.abs(p1.val - p2.val) / Math.max(1, Math.abs(p1.y - p2.y));
     
     for (let y = 0; y < height; y++) {
       yMap[y] = p1.val - (y - p1.y) * unitPerPixel;
     }
   } else {
-    // Fallback: Grid-based estimation (Smart Grid)
     const sorted = gridPositions.sort((a,b) => a - b);
     const interval = sorted.length > 2 ? (sorted[sorted.length-1] - sorted[0]) / (sorted.length - 1) : 40;
-    const valPerInterval = 30; // Standard fallback
+    const valPerInterval = 30; 
+    const anchorY = sorted[sorted.length - 1] || height;
+    const anchorVal = 60; // Assume bottom line is 60 as a conservative baseline
     
     for (let y = 0; y < height; y++) {
-      const gIdx = sorted.findIndex(gy => y < gy);
-      if (gIdx === -1) {
-        yMap[y] = 60 - (y - (sorted[sorted.length-1] || height)) * (valPerInterval/interval);
-      } else {
-        yMap[y] = (180 - (gIdx-1) * 30) - (y - (sorted[gIdx-1] || 0)) * (valPerInterval/interval);
-      }
+      yMap[y] = anchorVal - (y - anchorY) * (valPerInterval / interval);
     }
   }
 
@@ -128,16 +130,14 @@ function analyzeChartPixels(ctx, width, height, axisLabels = []) {
     if (db < 200) path.push({ x, y: dy, val: yMap[dy] });
   }
 
-  if (path.length < 20) return { peakVal: 0, baselineVal: 0, duration: 0 };
+  if (path.length < 20) return { peakVal: 0, baselineVal: 0, duration: 0, visualData: {} };
 
   const peakVal = Math.max(...path.map(p => p.val));
   const peakIdx = path.findIndex(p => p.val === peakVal);
-  
-  // GLOBAL Baseline Calculation: Find the median of the lowest 25% of the values in the entire view
   const allVals = path.map(p => p.val).sort((a,b) => a - b);
-  const baseline = allVals[Math.floor(allVals.length * 0.15)]; // Use 15th percentile as true physiological baseline
+  const baseline = allVals[Math.floor(allVals.length * 0.15)] || 95;
   
-  const elevationThreshold = baseline + (peakVal - baseline) * 0.25; // 25% elevation 
+  const elevationThreshold = baseline + (peakVal - baseline) * 0.25;
 
   let sIdx = peakIdx;
   while (sIdx > 0 && path[sIdx].val > elevationThreshold) sIdx--;
