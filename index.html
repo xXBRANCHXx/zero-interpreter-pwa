@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Zero Interpreter | AI-Powered Health Analysis</title>
+    <meta name="description" content="AI-powered health chart analysis with clinical-grade metabolic insights.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <div id="app">
+      <header class="glass-header">
+        <div class="logo">ZERO <span class="dim">INTERPRETER</span></div>
+        <div class="status-indicator">
+          <span class="status-dot"></span>
+          <span class="status-text">AI_CORE_v2.0</span>
+        </div>
+      </header>
+
+      <main>
+        <section id="hero" class="fade-in">
+          <div class="hero-content">
+            <h1>UPLOAD <span class="accent">CHART_DATA</span></h1>
+            <p>AI-powered metabolic analysis with clinical-grade precision. Upload your glucose chart for instant insights.</p>
+            
+            <div class="upload-zone glass" id="dropZone">
+              <input type="file" id="chartInput" accept="image/*" hidden />
+              <label for="chartInput" class="upload-label">
+                <div class="upload-icon">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-upload-cloud"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></svg>
+                </div>
+                <span>SELECT_CHART</span>
+                <span class="small-text">IMAGE/PDF RECOMMENDED</span>
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <section id="processing" class="hidden">
+          <div class="processing-card glass">
+            <div class="loader-ring"></div>
+            <h3>SCANNING_CHART_PIXELS</h3>
+            <p id="statusOutput">Initializing OCR Engine...</p>
+            <div class="progress-bar">
+              <div class="progress-fill" id="progressBar" style="width: 0%"></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="questions" class="hidden">
+          <div class="question-flow glass">
+            <h2>INPUT_RELEVANT_DATA</h2>
+            <div class="input-row">
+              <div class="input-group">
+                <label>LATEST_INTAKE</label>
+                <input type="text" id="foodInput" placeholder="e.g. 200g Brown Rice, Chicken Breast" />
+              </div>
+              <div class="input-group tiny-group">
+                <label>CALORIES</label>
+                <input type="number" id="caloriesInput" placeholder="kcal" />
+              </div>
+            </div>
+            <div class="input-group">
+              <label>OTHER_NOTES</label>
+              <textarea id="notesInput" placeholder="Exercise, Sleep, Meds..."></textarea>
+            </div>
+            <button id="analyzeBtn" class="btn-primary tiny">RUN_AI_ANALYSIS</button>
+          </div>
+        </section>
+
+        <section id="results" class="hidden">
+          <div class="results-container">
+            <div class="result-header">
+              <h2>ANALYSIS_REPORT_0x1</h2>
+              <button id="resetBtn" class="btn-ghost tiny">RESET</button>
+            </div>
+            
+            <div class="grid-layout">
+              <div class="score-card glass">
+                <label>HEALTH_SCORE</label>
+                <div id="healthScore" class="score-value">--</div>
+                <div id="healthTip" class="tip-text">Scanning for insights...</div>
+              </div>
+
+              <div class="grade-card glass">
+            <span class="label">METABOLIC_GRADE</span>
+            <div id="foodGrade" class="grade-value">--</div>
+            <div id="gradeLabel" class="grade-text">SCANNING</div>
+          </div>
+
+          <div class="grade-card glass">
+            <span class="label">SPIKE_DURATION</span>
+            <div id="spikeDuration" class="grade-value">--</div>
+            <div class="grade-text">MINUTES</div>
+          </div>
+
+              <div class="data-block glass">
+                <label>EXTRACTED_BIOMETRICS</label>
+                <div id="biometricsList" class="data-list">
+                  <!-- Parsed data goes here -->
+                </div>
+              </div>
+              
+              <div class="status-block glass">
+                <label>METABOLIC_CLASSIFICATION</label>
+                <div id="healthStatus" class="status-pill">DETERMINING...</div>
+                <div id="insightContent" class="mono-text">
+                  <!-- Analysis goes here -->
+                </div>
+              </div>
+
+              <div class="meal-card glass">
+                <label>MEAL_IMPACT</label>
+                <div id="mealScore" class="grade-value">--</div>
+                <div id="mealVerdict" class="tip-text"></div>
+              </div>
+
+              <div class="risk-card glass">
+                <label>RISK_FACTORS</label>
+                <div id="riskList" class="tag-list">
+                  <span class="tag tag-neutral">AWAITING_ANALYSIS</span>
+                </div>
+              </div>
+
+              <div class="strength-card glass">
+                <label>METABOLIC_STRENGTHS</label>
+                <div id="strengthList" class="tag-list">
+                  <span class="tag tag-neutral">AWAITING_ANALYSIS</span>
+                </div>
+              </div>
+            </div>
+
+            <div id="aiIndicator" class="ai-badge hidden">
+              <span class="ai-dot"></span>
+              <span>AI_ANALYSIS_ACTIVE</span>
+            </div>
+
+            <div class="disclaimer-text">
+              <span class="warning-icon">⚠</span> 
+              MEDICAL_DISCLAIMER: This analysis is AI-generated and for informational purposes only. It is NOT medical advice. Consult a physician for diagnosis.
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="minimal-footer">
+        <span class="dim">POWERED_BY_GROQ_AI</span>
+        <span class="dim">v2.0.0</span>
+      </footer>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
