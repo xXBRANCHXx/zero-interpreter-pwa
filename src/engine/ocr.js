@@ -19,14 +19,28 @@ export async function processImage(file, onProgress) {
   const blocks = result.data.blocks || [];
   
   const axisAnchors = [];
+  const timeAnchors = [];
+  
   (blocks || []).forEach(block => {
     if (block.paragraphs) {
       block.paragraphs.forEach(p => {
         p.lines.forEach(l => {
-          const valStr = l.text.trim().replace(/[^0-9]/g, '');
+          const lineText = l.text.trim();
+          
+          // 1. Detect Glucose Axis (Y-axis)
+          const valStr = lineText.replace(/[^0-9]/g, '');
           const val = parseInt(valStr);
-          if (!isNaN(val) && val >= 0 && val <= 500) {
+          if (!isNaN(val) && val >= 0 && val <= 500 && lineText.length < 5) {
             axisAnchors.push({ val, y: Math.round(l.bbox.y0 + (l.bbox.y1 - l.bbox.y0)/2) });
+          }
+          
+          // 2. Detect Time Anchors (X-axis) - e.g. 02:25 PM
+          const timeMatch = lineText.match(/(\d{1,2}:\d{2})\s*(AM|PM)?/i);
+          if (timeMatch) {
+            timeAnchors.push({ 
+              time: timeMatch[1] + (timeMatch[2] ? ' ' + timeMatch[2].toUpperCase() : ''), 
+              x: Math.round(l.bbox.x0 + (l.bbox.x1 - l.bbox.x0)/2)
+            });
           }
         });
       });
@@ -43,6 +57,7 @@ export async function processImage(file, onProgress) {
     visualData: { 
       ...rawVisual, 
       axisAnchors, 
+      timeAnchors,
       canvasHeight: canvas.height,
       canvasWidth: canvas.width 
     } 
@@ -62,21 +77,18 @@ function extractRawVisualData(ctx, width, height) {
     if (db < 200) path.push({ x, y: dy });
   }
 
-  if (path.length < 10) return { peakY: 0, minY: 0, pixelDuration: 0 };
+  if (path.length < 10) return { peakY: 0, minY: 0, peakX: 0, pathStartX: 0, pathEndX: 0 };
 
   const peakY = Math.min(...path.map(p => p.y));
   const minY = Math.max(...path.map(p => p.y));
-  const peakIdx = path.findIndex(p => p.y === peakY);
-  
-  let s = peakIdx, e = peakIdx;
-  const thresholdY = peakY + (minY - peakY) * 0.7;
-  while (s > 0 && path[s].y < thresholdY) s--;
-  while (e < path.length - 1 && path[e].y < thresholdY) e++;
+  const peakX = path.find(p => p.y === peakY).x;
 
   return { 
     peakY, 
     minY, 
-    pixelDuration: (path[e].x - path[s].x) || 50,
+    peakX,
+    pathStartX: path[0].x,
+    pathEndX: path[path.length - 1].x,
     chartTopY: Math.floor(height * 0.1),
     chartBottomY: Math.floor(height * 0.9)
   };
