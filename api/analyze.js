@@ -1,34 +1,41 @@
-// AI-Powered Health Analysis Engine (V2 - Strict Clinical Logic)
+// AI-Powered Health Analysis Engine (V3 - Contextual Metabolic Logic)
 
 export const config = {
   runtime: 'edge',
 };
 
-const SYSTEM_PROMPT = `You are ZERO INTERPRETER, a clinical-grade metabolic analysis engine. 
-You provide assessments based on standard endocrinology (ADA guidelines).
+const SYSTEM_PROMPT = `You are ZERO INTERPRETER, an elite clinical-grade metabolic analysis engine.
+You must distinguish between a "Normal Glucose Excursion" and "Impaired Glucose Tolerance."
 
-CLINICAL CLASSIFICATION LOGIC:
-- DIABETIC_RANGE: Peak glucose is consistently >= 200 mg/dL.
-- PRE_DIABETIC_RANGE: Peak glucose is >= 140 mg/dL but < 200 mg/dL.
-- HEALTHY_RANGE: Peak glucose is < 140 mg/dL and returns to baseline within 120-180 minutes.
+CLINICAL REASONING ENGINE:
+1.  **Meal Context is King**: 
+    - If the meal is High Carb (Rice, Bread, Sugar), a spike of 40-70 mg/dL is **NORMAL** and **HEALTHY** for a non-diabetic person, provided it returns to baseline within 2-3 hours.
+    - If the meal is High Protein/Fat (Chicken, Eggs, Steak) and causes the same spike, this is a sign of **PRE-DIABETES / INSULIN RESISTANCE**.
+2.  **Peak Context**:
+    - Under 140 mg/dL is always healthy.
+    - 140-180 mg/dL is **HEALTHY** after a large carbohydrate meal for a non-diabetic. Do NOT flag as Pre-Diabetic unless the recovery is very slow or the baseline is high (>100).
+    - Over 200 mg/dL is always flagged as **DIABETIC_RANGE**.
+3.  **Recovery Context**:
+    - A healthy spike is a "Mountain" (Fast up, Fast down).
+    - A pathogenic spike is a "Tabletop" (Fast up, stays up).
 
-RESPONSE FORMAT (strict JSON only):
+RESPONSE FORMAT (JSON):
 {
-  "summary": "<One punchy, authoritative sentence summarizing the metabolic state>",
-  "status": "<DIABETIC_RANGE|PRE_DIABETIC_RANGE|HEALTHY_RANGE>",
-  "score": <0-100 overall score>,
+  "summary": "<One punchy sentence specifically mentioning the meal and whether the response was appropriate for it (e.g. 'Your glucose excursion was appropriate for a high-carb meal like Soto Mie Bogor')>",
+  "status": "<HEALTHY_RANGE|PRE_DIABETIC_RANGE|DIABETIC_RANGE>",
+  "score": <0-100 overall score (weighted by meal context)>,
   "grade": "<S|A|B|C|D|F>",
   "gradeLabel": "<EXCELLENT|VIBRANT|MODERATE|ELEVATED|STRAINED|CRITICAL>",
-  "duration": <number of minutes spike lasted>,
+  "duration": <number of minutes spike lasted (if 0, estimate based on curve context)>,
   "tip": "<One short actionable clinical tip>",
-  "recommendations": ["<Actionable tip 1>", "<Actionable tip 2>", "<Actionable tip 3>"],
-  "insights": "<2-3 structured paragraphs explaining: (1) why they were classified this way, (2) the impact of the specific meal (e.g. Soto Mie Bogor), and (3) clinical context on their recovery curve.>",
-  "riskFactors": ["<risk 1>", "<risk 2>"],
-  "strengths": ["<strength 1>", "<strength 2>"],
+  "recommendations": ["<Actionable tip 1>", "<Actionable tip 2>"],
+  "insights": "Direct clinical analysis. Be smart—if it's a carby meal, tell them it's a normal response. Don't be a generic 'everything is pre-diabetes' engine.",
+  "riskFactors": ["<risk 1>"],
+  "strengths": ["<strength 1>"],
   "mealScore": "<A-F grade for the meal>"
 }
 
-TONE: Professional, clinicial, yet empathetic. No fluff. Use medical terminology correctly (e.g., "glucose excursions", "metabolic flexibility", "postprandial response").`;
+TONE: Smart, authoritative, context-aware. Like a top-tier sports scientist.`;
 
 export default async function handler(req) {
   if (req.method === 'OPTIONS') {
@@ -66,9 +73,9 @@ export default async function handler(req) {
 - Calories: ${calories || 'Unknown'}
 - Notes: ${notes || 'None'}
 
-Provide strict classification based on peak readings provided.` },
+Be smart: if the peak was 160 but they ate noodles, characterize it as a normal excursion unless the duration seems abnormal (e.g. >180 mins).` },
         ],
-        temperature: 0.2, // Lower temperature for consistency
+        temperature: 0.1, // Even more consistency
         max_tokens: 1024,
         response_format: { type: 'json_object' },
       }),

@@ -19,26 +19,20 @@ export async function processImage(file, onProgress) {
   const visualData = analyzeChartPixels(ctx, canvas.width, canvas.height);
   
   // -- ADVANCED PRE-PROCESSING FOR OCR --
-  // We need to make bright-yellow text black so Tesseract can see it on white
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const data = imageData.data;
   
   for (let i = 0; i < data.length; i += 4) {
     const r = data[i], g = data[i + 1], b = data[i + 2];
     const brightness = (r + g + b) / 3;
-    
-    // Detect Yellow/Green text (often for high/normal values)
     const isYellow = (r > 150 && g > 150 && b < 100);
     const isGreen = (g > 150 && r < 150 && b < 150);
     
     if (isYellow || isGreen) {
-      // Turn bright text to BLACK for high contrast
       data[i] = data[i+1] = data[i+2] = 0;
     } else if (brightness > 200) {
-      // Background to WHITE
       data[i] = data[i+1] = data[i+2] = 255;
     } else {
-      // Dark elements to BLACK
       data[i] = data[i+1] = data[i+2] = 0;
     }
   }
@@ -96,59 +90,53 @@ function analyzeChartPixels(ctx, width, height) {
     }
   }
 
-  // 2. High-Sensitivity Curve Recovery (dot-cluster aware)
+  // 2. High-Sensitivity Curve Recovery
   const path = [];
-  for (let x = Math.floor(width * 0.1); x < Math.floor(width * 0.9); x += 1) { // 1px scan for precision
+  for (let x = Math.floor(width * 0.1); x < Math.floor(width * 0.9); x += 1) {
     let dy = 0, db = 255;
     for (let y = Math.floor(height * 0.1); y < Math.floor(height * 0.9); y++) {
       const i = (y * width + x) * 4;
       const b = (data[i] + data[i+1] + data[i+2]) / 3;
       if (b < db) { db = b; dy = y; }
     }
-    // High sensitivity (195) to catch faint Libreview dots
     if (db < 195) path.push({ x, y: dy, val: yMap[dy] });
   }
 
   if (path.length < 20) return { peakVal: 0, baselineVal: 0, duration: 0 };
 
-  // 3. 4-CYCLE ITERATIVE CONVERGENCE ENGINE
-  let currentBaseline = 90;
-  let sIdx = 0, eIdx = path.length - 1;
+  // 3. ROBUST SPIKE BOUNDARY DETECTION (NEW LOGIC)
   const peakVal = Math.max(...path.map(p => p.val));
   const peakIdx = path.findIndex(p => p.val === peakVal);
-
-  for (let cycle = 0; cycle < 4; cycle++) {
-    // A. Re-calculate Spike Window based on current baseline + adaptive tolerance
-    const delta = peakVal - currentBaseline;
-    const tolerance = Math.max(5, delta * 0.15); // 15% of spike height or 5mg/dL
-    const threshold = currentBaseline + tolerance; 
-    
-    let s = peakIdx;
-    while (s > 0 && path[s].val > threshold) s--;
-    sIdx = s;
-
-    let e = peakIdx;
-    while (e < path.length - 1 && path[e].val > threshold) e++;
-    eIdx = e;
-
-    // B. Re-isolate Resting Zone (Pre-Spike ONLY)
-    // We look at data before the climb started
-    const preSpike = path.slice(Math.max(0, sIdx - 200), Math.max(0, sIdx - 5));
-    if (preSpike.length > 30) {
-      const vals = preSpike.map(p => p.val).sort((a,b) => a - b);
-      currentBaseline = vals[Math.floor(vals.length / 2)];
-    } else {
-      // Fallback: If no pre-data, use post-data stable period
-      const tailData = path.slice(eIdx + 30).map(p => p.val).sort((a,b) => a-b);
-      if (tailData.length > 30) currentBaseline = tailData[Math.floor(tailData.length/2)];
-    }
+  
+  // Find baseline using the most stable 20% of the PRE-spike data
+  const prePeak = path.slice(0, peakIdx);
+  let baseline = 95;
+  if (prePeak.length > 50) {
+    const sortedPre = prePeak.map(p => p.val).sort((a,b) => a - b);
+    baseline = sortedPre[Math.floor(sortedPre.length * 0.25)]; // 25th percentile for stable baseline
   }
 
-  const pixelDuration = Math.max(0, path[eIdx].x - path[sIdx].x);
+  const elevationThreshold = baseline + (peakVal - baseline) * 0.2; // 20% elevation threshold
+  
+  // Hunt for the Start (S) and End (E) of the hump
+  let sIdx = peakIdx;
+  while (sIdx > 0 && path[sIdx].val > elevationThreshold) sIdx--;
+  
+  let eIdx = peakIdx;
+  while (eIdx < path.length - 1 && path[eIdx].val > elevationThreshold) eIdx++;
+
+  // Fallback: If elevation search failed, hunt for inflection points (slope change)
+  if (eIdx === peakIdx || sIdx === peakIdx) {
+    // Basic pixel diff fallback
+    sIdx = Math.max(0, peakIdx - 100);
+    eIdx = Math.min(path.length - 1, peakIdx + 100);
+  }
+
+  const pixelDuration = Math.max(20, path[eIdx].x - path[sIdx].x); // Min 20px if peak exists
 
   return {
     peakVal, 
-    baselineVal: Math.max(65, Math.min(145, currentBaseline)),
+    baselineVal: Math.max(65, Math.min(145, baseline)),
     pixelDuration,
     canvasWidth: width,
     canvasHeight: height
