@@ -19,11 +19,12 @@ export async function processImage(file, onProgress) {
   const blocks = result.data.blocks || [];
   
   const axisAnchors = [];
-  blocks.forEach(block => {
+  (blocks || []).forEach(block => {
     if (block.paragraphs) {
       block.paragraphs.forEach(p => {
         p.lines.forEach(l => {
-          const val = parseInt(l.text.trim().replace(/[^0-9]/g, ''));
+          const valStr = l.text.trim().replace(/[^0-9]/g, '');
+          const val = parseInt(valStr);
           if (!isNaN(val) && val >= 0 && val <= 500) {
             axisAnchors.push({ val, y: Math.round(l.bbox.y0 + (l.bbox.y1 - l.bbox.y0)/2) });
           }
@@ -36,13 +37,14 @@ export async function processImage(file, onProgress) {
   
   await worker.terminate();
   URL.revokeObjectURL(imageUrl);
+  
   return { 
     text, 
     visualData: { 
       ...rawVisual, 
       axisAnchors, 
-      canvasHeight: height,
-      canvasWidth: width 
+      canvasHeight: canvas.height,
+      canvasWidth: canvas.width 
     } 
   };
 }
@@ -62,11 +64,10 @@ function extractRawVisualData(ctx, width, height) {
 
   if (path.length < 10) return { peakY: 0, minY: 0, pixelDuration: 0 };
 
-  const peakY = Math.min(...path.map(p => p.y)); // Min Y is High Value
-  const minY = Math.max(...path.map(p => p.y));  // Max Y is Low Value
+  const peakY = Math.min(...path.map(p => p.y));
+  const minY = Math.max(...path.map(p => p.y));
   const peakIdx = path.findIndex(p => p.y === peakY);
   
-  // Simple hump width in pixels
   let s = peakIdx, e = peakIdx;
   const thresholdY = peakY + (minY - peakY) * 0.7;
   while (s > 0 && path[s].y < thresholdY) s--;
@@ -75,7 +76,7 @@ function extractRawVisualData(ctx, width, height) {
   return { 
     peakY, 
     minY, 
-    pixelDuration: path[e].x - path[s].x,
+    pixelDuration: (path[e].x - path[s].x) || 50,
     chartTopY: Math.floor(height * 0.1),
     chartBottomY: Math.floor(height * 0.9)
   };
